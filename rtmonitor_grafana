@@ -1,0 +1,39 @@
+SELECT Hora_unix_Alerta,
+       Hora_Alerta,
+       ((unix_timestamp(now())-Hora_unix_Alerta)/60) Tiempo,
+       TRIM(Nodo) Nodo,
+       if(T1.current_state=0,"UP","DOWN") Status,
+       T1.output,
+       if((unix_timestamp(Hora_coment) - Hora_unix_Alerta)<0,"Add acknowledge",Comentario) Comentario,
+       if((unix_timestamp(Hora_coment) - Hora_unix_Alerta)<0,"",Hora_coment) Hora_coment,
+       if((unix_timestamp(Hora_coment) - Hora_unix_Alerta)<0,((unix_timestamp(now())-Hora_unix_Alerta)/60),((unix_timestamp(Hora_coment) - Hora_unix_Alerta)/60)) T_React
+FROM
+(SELECT unix_timestamp(NSC.last_hard_state_change) Hora_unix_Alerta,
+          from_unixtime(unix_timestamp(NSC.last_hard_state_change),'%H:%i:%s - %d/%m/%y') Hora_Alerta,
+          NSC.display_name Nodo,
+          NSC.display_name_equipo Equipo,
+          NSC.current_state,
+          NSC.output,
+          NSC.fecha fecha,
+          ifnull(NA.comment_data,"Add acknowledge") Comentario,
+          ifnull(NA.entry_time,"") Hora_coment,
+          ifnull(NA.author_name,"") Autor
+   FROM nagios_hoststatus_current NSC
+   LEFT JOIN nagios_ack_hosts NA ON NA.name1 = NSC.display_name_equipo
+   UNION SELECT unix_timestamp(NSC.last_hard_state_change) Hora_unix_Alerta,
+                from_unixtime(unix_timestamp(NSC.last_hard_state_change),'%H:%i:%s - %d/%m/%y') Hora_Alerta,
+                NSC.display_name Nodo,
+                NSC.display_name_equipo Equipo,
+                current_state,
+                NSC.output,
+                NSC.fecha fecha,
+                ifnull(NA.comment_data,"Add acknowledge") Comentario,
+                ifnull(NA.entry_time,0) Hora_coment,
+                ifnull(NA.author_name,0) Autor
+   FROM nagios_hoststatus_current NSC
+   RIGHT JOIN nagios_ack_hosts NA ON NA.name1 = NSC.display_name_equipo
+   WHERE NSC.current_state not like "%NULL%"
+	ORDER BY Hora_unix_Alerta DESC) T1
+	where T1.current_state > 0
+	GROUP BY Hora_Alerta
+	ORDER BY Hora_unix_Alerta DESC
